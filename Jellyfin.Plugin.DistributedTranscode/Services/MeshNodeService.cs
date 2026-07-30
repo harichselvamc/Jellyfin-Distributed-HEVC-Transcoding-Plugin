@@ -45,6 +45,69 @@ public sealed class MeshNodeService : IDisposable
 
     public IReadOnlyCollection<NodeInfo> GetConnectedNodes() => _nodes.Values.ToArray();
 
+    public NodeInfo RegisterOrUpdateNode(NodeRegistrationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var nodeId = string.IsNullOrWhiteSpace(request.NodeId)
+            ? $"{request.Address}:{request.Port}"
+            : request.NodeId;
+
+        var nodeName = string.IsNullOrWhiteSpace(request.NodeName)
+            ? nodeId
+            : request.NodeName;
+
+        var node = _nodes.AddOrUpdate(
+            nodeId,
+            _ => new NodeInfo
+            {
+                NodeId = nodeId,
+                NodeName = nodeName,
+                Address = request.Address,
+                Port = request.Port,
+                Capabilities = new NodeCapabilities
+                {
+                    CpuCores = request.CpuCores,
+                    AvailableMemoryBytes = request.AvailableMemoryBytes,
+                    SupportsHevcDecoding = request.SupportsHevcDecoding,
+                    SupportsHevcEncoding = request.SupportsHevcEncoding,
+                    SupportsHardwareAcceleration = request.SupportsHardwareAcceleration,
+                    SupportedHardwareEncoders = request.SupportedHardwareEncoders,
+                },
+                LastSeenUtc = DateTime.UtcNow,
+            },
+            (_, existing) =>
+            {
+                existing.NodeName = nodeName;
+                existing.Address = request.Address;
+                existing.Port = request.Port;
+                existing.Capabilities = new NodeCapabilities
+                {
+                    CpuCores = request.CpuCores,
+                    AvailableMemoryBytes = request.AvailableMemoryBytes,
+                    SupportsHevcDecoding = request.SupportsHevcDecoding,
+                    SupportsHevcEncoding = request.SupportsHevcEncoding,
+                    SupportsHardwareAcceleration = request.SupportsHardwareAcceleration,
+                    SupportedHardwareEncoders = request.SupportedHardwareEncoders,
+                };
+                existing.LastSeenUtc = DateTime.UtcNow;
+                return existing;
+            });
+
+        SaveRegisteredNode(request, nodeId, nodeName);
+        return node;
+    }
+
+    public DistributedTranscodeSummary GetSummary(TranscodeJobManager transcodeJobManager)
+    {
+        return new DistributedTranscodeSummary
+        {
+            KnownNodes = _nodes.Count,
+            Nodes = GetConnectedNodes(),
+            RecentJobs = transcodeJobManager.GetRecentStatuses(),
+        };
+    }
+
     public async Task PerformHealthCheckAsync(CancellationToken cancellationToken)
     {
         using var client = new HttpClient
@@ -157,13 +220,49 @@ public sealed class MeshNodeService : IDisposable
                 $"{configuredNode.Address}:{configuredNode.Port}",
                 new NodeInfo
                 {
-                    NodeId = configuredNode.Name,
+                    NodeId = string.IsNullOrWhiteSpace(configuredNode.NodeId) ? configuredNode.Name : configuredNode.NodeId,
                     NodeName = configuredNode.Name,
                     Address = configuredNode.Address,
                     Port = configuredNode.Port,
+                    Capabilities = new NodeCapabilities
+                    {
+                        CpuCores = configuredNode.CpuCores,
+                        AvailableMemoryBytes = configuredNode.AvailableMemoryBytes,
+                        SupportsHevcDecoding = configuredNode.SupportsHevcDecoding,
+                        SupportsHevcEncoding = configuredNode.SupportsHevcEncoding,
+                        SupportsHardwareAcceleration = configuredNode.SupportsHardwareAcceleration,
+                        SupportedHardwareEncoders = configuredNode.SupportedHardwareEncoders,
+                    },
                     LastSeenUtc = DateTime.UtcNow,
                 });
         }
+    }
+
+    private void SaveRegisteredNode(NodeRegistrationRequest request, string nodeId, string nodeName)
+    {
+        var existing = _configuration.KnownNodes.FirstOrDefault(node =>
+            string.Equals(node.NodeId, nodeId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals($"{node.Address}:{node.Port}", $"{request.Address}:{request.Port}", StringComparison.OrdinalIgnoreCase));
+
+        if (existing is null)
+        {
+            existing = new ConfiguredNode();
+            _configuration.KnownNodes.Add(existing);
+        }
+
+        existing.NodeId = nodeId;
+        existing.Name = nodeName;
+        existing.Address = request.Address;
+        existing.Port = request.Port;
+        existing.Enabled = true;
+        existing.CpuCores = request.CpuCores;
+        existing.AvailableMemoryBytes = request.AvailableMemoryBytes;
+        existing.SupportsHevcDecoding = request.SupportsHevcDecoding;
+        existing.SupportsHevcEncoding = request.SupportsHevcEncoding;
+        existing.SupportsHardwareAcceleration = request.SupportsHardwareAcceleration;
+        existing.SupportedHardwareEncoders = request.SupportedHardwareEncoders;
+
+        Plugin.Instance?.SaveConfiguration(_configuration);
     }
 
     private async Task ListenForHeartbeatsAsync(CancellationToken cancellationToken)

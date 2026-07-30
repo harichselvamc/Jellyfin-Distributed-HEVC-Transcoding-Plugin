@@ -31,6 +31,8 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
 public sealed class ConfiguredNode
 {
+    public string NodeId { get; set; } = string.Empty;
+
     public string Name { get; set; } = string.Empty;
 
     public string Address { get; set; } = string.Empty;
@@ -38,6 +40,18 @@ public sealed class ConfiguredNode
     public int Port { get; set; } = 9090;
 
     public bool Enabled { get; set; } = true;
+
+    public int CpuCores { get; set; }
+
+    public long AvailableMemoryBytes { get; set; }
+
+    public bool SupportsHevcDecoding { get; set; } = true;
+
+    public bool SupportsHevcEncoding { get; set; } = true;
+
+    public bool SupportsHardwareAcceleration { get; set; }
+
+    public string[] SupportedHardwareEncoders { get; set; } = [];
 }
 
 public sealed class TranscodeSettings

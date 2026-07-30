@@ -1,370 +1,394 @@
-# Jellyfin Distributed HEVC Transcoding Plugin
+<div align="center">
 
-An experimental open source Jellyfin plugin for distributing HEVC transcoding jobs across multiple machines on the same local network.
+# Jellyfin Distributed HEVC Transcoding
 
-The idea behind this project is to let a weaker Jellyfin host, such as a Raspberry Pi or low-power mini PC, coordinate transcoding while one or more stronger devices such as a laptop or desktop perform the expensive video encoding work.
+Experimental Jellyfin plugin for sending heavy transcode work from a small Jellyfin server to stronger worker machines on the same local network.
 
-## Project Status
+<strong>Status:</strong> early prototype, under active development
 
-This repository is currently in the design and scaffolding phase.
+</div>
 
-- The plugin is not implemented yet.
-- The architecture and setup plan are defined here first.
-- The goal of this repository is to become a real open source starting point for building distributed transcoding support around Jellyfin.
+<br>
 
-If you publish this repository today, it should be presented as an early-stage prototype project rather than a finished plugin.
+<table>
+  <tr>
+    <td><strong>Target Jellyfin</strong></td>
+    <td>10.11.11</td>
+  </tr>
+  <tr>
+    <td><strong>Target .NET</strong></td>
+    <td>.NET 9</td>
+  </tr>
+  <tr>
+    <td><strong>Main test setup</strong></td>
+    <td>Jellyfin on Raspberry Pi, Windows laptop as worker</td>
+  </tr>
+  <tr>
+    <td><strong>Project type</strong></td>
+    <td>Open source prototype</td>
+  </tr>
+</table>
 
-## Why This Project Exists
+## Goal
 
-Jellyfin transcoding can be heavy, especially for HEVC or 4K media. Many home servers are great for storage and streaming but not strong enough for repeated live transcoding.
+The goal is simple:
 
-This project explores a simple model:
+Use a stronger computer on the local network to do transcoding work, so a small Jellyfin server like a Raspberry Pi does not carry the full CPU load.
 
-- Jellyfin stays on the main server
-- worker devices on the LAN advertise their capacity
-- the transcode job is split into chunks
-- chunks are sent to available workers
-- completed segments are stitched back together for playback
+Example:
 
-This can make better use of hardware you already own instead of forcing everything through one machine.
+- Raspberry Pi runs Jellyfin.
+- Windows laptop runs the worker app.
+- Jellyfin plugin sends transcode chunks to the laptop.
+- The laptop runs FFmpeg.
+- The plugin receives the output back.
 
-## Planned Features
+This project is still under development. It needs more time before it can be used like a normal finished Jellyfin plugin.
 
-- Local network node discovery
-- Manual node registration for stable setups
-- Health checks for active worker nodes
-- Capability reporting for CPU, memory, and hardware encoding
-- Chunk-based distributed transcoding
-- Segment recombination through FFmpeg
-- Configurable worker priority and parallelism
-- Future support for Intel Quick Sync, NVENC, and VAAPI
-- Open source development with room for contributors
+## Current Status
 
-## Planned Repository Structure
+This is not production ready.
+
+It is a working prototype for testing the distributed transcode idea.
+
+### Working Now
+
+- Jellyfin plugin loads in Jellyfin `10.11.11`.
+- Windows worker app runs on port `9090`.
+- Dashboard is available at `/distributed-transcode/dashboard`.
+- Plugin can check if a worker is online.
+- Plugin can save worker devices.
+- Saved workers can survive Jellyfin restart.
+- Pi can send a small test transcode chunk to the Windows worker.
+- Worker runs FFmpeg and creates output.
+- Dashboard shows connected devices and recent jobs.
+- Basic retries, timeout handling, and worker request signing support exist.
+- Full-file distributed transcode endpoint has been started.
+
+### Tested So Far
+
+The project has been tested with:
+
+- Jellyfin running in Docker on Raspberry Pi.
+- Windows laptop as worker.
+- FFmpeg installed on Windows.
+- Manual worker registration.
+- Tiny chunk transcode test from Pi to Windows worker.
+
+The small test job successfully created output on the Windows worker.
+
+## Not Working Yet
+
+Normal Jellyfin movie playback is not automatically distributed yet.
+
+If you play a movie in Jellyfin today, Jellyfin still uses its normal FFmpeg flow on the Jellyfin server.
+
+The dashboard test is real worker dispatch, but it is not yet connected into Jellyfin's automatic playback transcoding path.
+
+## Important Limitation
+
+This plugin currently proves that worker dispatch is possible.
+
+It does not yet replace Jellyfin's built-in live playback transcoder.
+
+To make automatic playback work, the next major step is an FFmpeg wrapper or deeper Jellyfin playback integration.
+
+## Planned Automatic Playback Design
+
+The planned approach is:
+
+1. Jellyfin starts a transcode job.
+2. Instead of running normal FFmpeg directly, Jellyfin calls a wrapper.
+3. The wrapper checks if distributed transcoding is possible.
+4. If yes, it sends work to worker devices.
+5. If no, it falls back to normal Jellyfin FFmpeg.
+6. The viewer should still play media normally in Jellyfin.
+
+This is the hardest part of the project and needs careful development.
+
+## Dashboard
+
+The dashboard uses a simple professional black and white style.
+
+Open it from the Jellyfin server:
+
+```text
+http://<jellyfin-server-ip>:8096/distributed-transcode/dashboard
+```
+
+Example:
+
+```text
+http://192.168.1.5:8096/distributed-transcode/dashboard
+```
+
+Dashboard features:
+
+- Worker health check
+- Save worker
+- Connected device list
+- Recent job list
+- Tiny test job
+- Full-file distributed transcode test area
+
+## Repository Structure
 
 ```text
 Jellyfin.Plugin.DistributedTranscode/
-|- Jellyfin.Plugin.DistributedTranscode.csproj
-|- Plugin.cs
-|- Configuration/
-|  |- PluginConfiguration.cs
-|- Services/
-|  |- MeshNodeService.cs
-|  |- DistributeTranscodeService.cs
-|  |- JobDistributor.cs
-|  |- NetworkDiscovery.cs
-|- Models/
-|  |- NodeInfo.cs
-|  |- SegmentRequest.cs
-|  |- TranscodeJob.cs
-|- Web/
-|  |- TranscodeController.cs
+  Plugin.cs
+  PluginServiceRegistrator.cs
+  Configuration/
+  Models/
+  Services/
+  Security/
+  Web/
+
+DistributedTranscode.Worker/
+  Program.cs
+  appsettings.json
 ```
-
-## Planned Core Components
-
-### `Plugin.cs`
-
-The main Jellyfin plugin entry point. This is expected to:
-
-- initialize services
-- register background jobs or timers
-- hook into the Jellyfin transcoding flow
-- start health monitoring for connected worker nodes
-
-### `PluginConfiguration.cs`
-
-Holds the plugin configuration values, such as:
-
-- `NodeName`
-- `Port`
-- `EnableDiscovery`
-- `KnownNodes`
-- `MaxParallelTasks`
-- `IsMasterNode`
-- `MasterNodeAddress`
-- `ChunkSizeSeconds`
-- `TranscodeSettings`
-
-### `MeshNodeService.cs`
-
-Responsible for network coordination between nodes, including:
-
-- broadcasting node presence
-- receiving discovery messages
-- exposing worker endpoints
-- checking worker health
-- maintaining the active node list
-
-### `DistributeTranscodeService.cs`
-
-Responsible for the actual job flow:
-
-- receiving a transcode request
-- probing source media information
-- splitting the media into chunks
-- choosing workers
-- sending each chunk to a worker
-- collecting finished segments
-- combining the final output
-
-### Models
-
-The models folder is expected to define shared contracts such as:
-
-- node identity and capabilities
-- transcode job details
-- chunk request payloads
-- segment results and errors
-
-## Expected Workflow
-
-1. Jellyfin receives a playback request that requires transcoding.
-2. The plugin checks available worker nodes.
-3. The source media is divided into time-based chunks.
-4. Chunks are distributed across available nodes.
-5. Each worker transcodes its chunk.
-6. The coordinator collects completed segments.
-7. FFmpeg concatenates the final media output.
-8. Jellyfin serves the result to the client.
-
-## Example Home Lab Setup
-
-### Main Jellyfin Server
-
-- Raspberry Pi
-- Mini PC
-- NAS-hosted Jellyfin instance
-
-This machine is responsible for:
-
-- library management
-- playback requests
-- session coordination
-- dispatching chunk work to workers
-
-### Worker Node
-
-- Windows laptop
-- Linux desktop
-- spare mini PC
-
-This machine is responsible for:
-
-- receiving chunk jobs
-- transcoding with CPU or GPU acceleration
-- returning completed output segments
-
-### Playback Client
-
-- Android TV
-- web browser
-- tablet
-- phone
-
-The client does not need this plugin. It only streams from Jellyfin as usual.
-
-## Development Setup
 
 ## Requirements
 
-- .NET 8 SDK
-- Jellyfin server for local testing
-- FFmpeg installed and available in `PATH`
-- Git
-- at least two machines on the same network for realistic distributed testing
+### Jellyfin Server
 
-## Suggested Package Dependencies
+- Jellyfin `10.11.11`
+- .NET 9 compatible plugin build
+- FFmpeg available in the Jellyfin container or host
 
-The original design draft expects dependencies similar to:
+### Worker Machine
 
-- `Jellyfin.Controller`
-- `Jellyfin.Model`
-- `FFMpegCore`
-- `Grpc.Net.Client`
-- `Grpc.AspNetCore.Server`
-- `Microsoft.Extensions.Hosting`
-- `System.Threading.Tasks.Dataflow`
+- .NET 9 SDK or runtime
+- FFmpeg in `PATH`
+- FFprobe in `PATH`
+- Network access from Jellyfin server to worker
+- Port `9090` open on the worker firewall
 
-Version numbers should be aligned with the Jellyfin version you target when implementation begins.
+## Build
 
-## Local Setup Steps
-
-1. Clone the repository:
+From the repository root:
 
 ```powershell
-git clone https://github.com/<your-username>/jellyfin-distributed-hevc-transcoding-plugin.git
-cd jellyfin-distributed-hevc-transcoding-plugin
+dotnet restore
+dotnet build Jellyfin.Plugin.DistributedTranscode/Jellyfin.Plugin.DistributedTranscode.csproj -c Release
+dotnet build DistributedTranscode.Worker/DistributedTranscode.Worker.csproj -c Release
 ```
 
-2. Create the project scaffold:
+On Windows CMD:
 
-```powershell
-dotnet new classlib -n Jellyfin.Plugin.DistributedTranscode
+```cmd
+dotnet restore
+dotnet build "Jellyfin.Plugin.DistributedTranscode\Jellyfin.Plugin.DistributedTranscode.csproj" -c Release
+dotnet build "DistributedTranscode.Worker\DistributedTranscode.Worker.csproj" -c Release
 ```
 
-3. Add the initial package references:
+## Run Worker
 
-```powershell
-dotnet add Jellyfin.Plugin.DistributedTranscode package Jellyfin.Controller
-dotnet add Jellyfin.Plugin.DistributedTranscode package Jellyfin.Model
-dotnet add Jellyfin.Plugin.DistributedTranscode package FFMpegCore
-dotnet add Jellyfin.Plugin.DistributedTranscode package Grpc.Net.Client
-dotnet add Jellyfin.Plugin.DistributedTranscode package Grpc.AspNetCore.Server
-dotnet add Jellyfin.Plugin.DistributedTranscode package Microsoft.Extensions.Hosting
-dotnet add Jellyfin.Plugin.DistributedTranscode package System.Threading.Tasks.Dataflow
+On the worker machine:
+
+```cmd
+dotnet run --project "DistributedTranscode.Worker\DistributedTranscode.Worker.csproj" -c Release
 ```
 
-4. Build the scaffold:
+Check worker health:
 
-```powershell
-dotnet build Jellyfin.Plugin.DistributedTranscode
+```cmd
+curl http://127.0.0.1:9090/distributed-transcode/health
 ```
 
-5. Once implementation exists, copy the built plugin output into your Jellyfin plugins directory for testing.
+From the Jellyfin server, check the worker:
 
-Note: the exact plugin deployment path depends on your operating system and how Jellyfin is installed.
-
-## Planned Configuration Example
-
-The current draft design assumes settings similar to the following:
-
-```json
-{
-  "NodeName": "Laptop-Node",
-  "Port": 9090,
-  "EnableDiscovery": true,
-  "MaxParallelTasks": 4,
-  "IsMasterNode": false,
-  "MasterNodeAddress": "192.168.1.100:9090",
-  "ChunkSizeSeconds": 60
-}
+```bash
+curl http://<worker-ip>:9090/distributed-transcode/health
 ```
 
-This is only an example of the intended shape. The actual config schema may change during implementation.
+## Manual Plugin Install
 
-## Deployment Plan
+Build output is here:
 
-### Worker Node Deployment
-
-On the stronger worker machine:
-
-- install FFmpeg with HEVC support
-- install the plugin or future worker companion component
-- expose the worker endpoint on the chosen port
-- allow the local firewall rule if required
-- verify the machine can transcode independently
-
-### Coordinator Deployment
-
-On the main Jellyfin server:
-
-- install the plugin
-- enable discovery or manually list worker nodes
-- set chunk size and parallel limits
-- route eligible jobs through the distributed workflow
-
-### Clients
-
-Clients such as Android TV or browsers do not need special setup. They continue to consume media through Jellyfin normally.
-
-## Hardware Acceleration Direction
-
-Hardware acceleration is planned but not implemented yet.
-
-Possible future targets include:
-
-- Intel Quick Sync
-- NVIDIA NVENC
-- VAAPI on Linux
-- software fallback when hardware encoding is unavailable
-
-An example future FFmpeg direction for Intel Quick Sync could look like:
-
-```csharp
-var ffmpegArgs = $"-hwaccel qsv " +
-                 $"-i \"{input}\" " +
-                 $"-c:v h264_qsv " +
-                 $"-preset fast " +
-                 $"-global_quality 23 " +
-                 $"\"{output}\"";
+```text
+Jellyfin.Plugin.DistributedTranscode/bin/Release/net9.0
 ```
 
-The exact command line will depend on the host OS, installed drivers, and target codec pipeline.
+Copy those files into the Jellyfin plugin folder.
 
-## Security Considerations
+Example Docker install path:
 
-Distributed transcoding should not be exposed casually without safeguards.
+```text
+/home/admin/media-server/jellyfin/config/plugins/DistributedTranscode
+```
 
-Before production use, this project should include:
+Example copy from Windows to Pi:
 
-- trusted node authentication
-- signed or token-based worker requests
-- allowlisted worker registration
-- validation of media paths and job payloads
-- timeout and retry controls
-- encrypted transport where practical
-- logging and auditability for node actions
+```cmd
+scp -r "D:\Jellyfin Distributed HEVC Transcoding Plugin\Jellyfin.Plugin.DistributedTranscode\bin\Release\net9.0\*" admin@192.168.1.5:/tmp/distributed-transcode
+```
 
-## Risks And Engineering Challenges
+On the Pi:
 
-This idea is promising, but there are real technical challenges:
+```bash
+sudo mkdir -p /home/admin/media-server/jellyfin/config/plugins/DistributedTranscode
+sudo cp -r /tmp/distributed-transcode/* /home/admin/media-server/jellyfin/config/plugins/DistributedTranscode/
+docker restart jellyfin
+```
 
-- live transcoding has tighter timing constraints than offline batch work
-- segment boundaries can introduce playback issues if not handled carefully
-- some formats do not stitch cleanly without extra processing
-- Jellyfin integration may require deeper hooks than a basic plugin alone
-- worker availability changes can interrupt active playback sessions
+## Test Order
 
-Because of that, this project should be treated as experimental until there is a stable end-to-end prototype.
+Use this order when testing:
 
-## Open Source Roadmap
+1. Start the Windows worker.
+2. Restart Jellyfin after copying the plugin.
+3. Open the dashboard.
+4. Click `Check Worker`.
+5. Click `Save Worker`.
+6. Click `Run Tiny Test Job`.
+7. Watch the worker terminal for `/chunk`.
+8. Check the output file on the worker.
 
-- create the plugin project scaffold
-- implement configuration classes
-- implement node discovery and health checks
-- add worker registration and capability reporting
-- build chunk dispatch and result collection
-- add segment recombination
-- integrate with Jellyfin transcoding flow
-- add tests and sample configuration
-- document installation and troubleshooting
-- publish tagged releases
+If full-file test is used, also watch for:
+
+```text
+/probe
+/chunk
+/file
+```
+
+## Current API Endpoints
+
+Plugin endpoints:
+
+```text
+GET  /distributed-transcode/health
+GET  /distributed-transcode/nodes
+GET  /distributed-transcode/summary
+GET  /distributed-transcode/dashboard
+POST /distributed-transcode/nodes
+POST /distributed-transcode/check-worker
+POST /distributed-transcode/test-job
+POST /distributed-transcode/transcode-file
+POST /distributed-transcode/chunk
+```
+
+Worker endpoints:
+
+```text
+GET  /distributed-transcode/health
+POST /distributed-transcode/chunk
+POST /distributed-transcode/probe
+GET  /distributed-transcode/file
+```
+
+## What Is Pending
+
+Main pending work:
+
+- Automatic Jellyfin playback integration.
+- FFmpeg wrapper mode.
+- Better path mapping between Jellyfin paths and worker paths.
+- Better worker delete and edit buttons.
+- Better duplicate worker handling.
+- Stronger shared secret setup in the dashboard.
+- More progress details for long jobs.
+- Better full-file transcode testing.
+- Safer cleanup of temporary chunk files.
+- Better packaging for GitHub releases.
+- GitHub Actions build workflow.
+- More documentation for Linux workers.
+
+## Development Roadmap
+
+### Phase 1: Prototype
+
+Status: mostly done.
+
+- Plugin loads in Jellyfin.
+- Worker app runs.
+- Health checks work.
+- Manual worker save works.
+- Tiny chunk dispatch works.
+- Dashboard exists.
+
+### Phase 2: Full File Pipeline
+
+Status: in progress.
+
+- Probe media duration.
+- Split media into chunks.
+- Send chunks to workers.
+- Download finished chunks.
+- Combine output on Jellyfin server.
+- Show progress in dashboard.
+
+### Phase 3: Automatic Playback
+
+Status: pending.
+
+- Add FFmpeg wrapper or deeper Jellyfin integration.
+- Detect when Jellyfin wants transcoding.
+- Route eligible jobs to distributed workers.
+- Fall back to normal FFmpeg when needed.
+- Keep playback stable for real users.
+
+### Phase 4: Public Release
+
+Status: pending.
+
+- Add release package.
+- Add GitHub Actions.
+- Add install guide.
+- Add troubleshooting guide.
+- Add screenshots.
+- Add contributor tasks.
+
+## Security Notes
+
+Do not expose the worker port to the public internet.
+
+Keep this on a trusted local network only.
+
+Security work still needs improvement before production use:
+
+- Better shared secret setup.
+- Worker allowlist.
+- Safer file path validation.
+- Better logs.
+- Better cleanup.
+- Optional HTTPS support.
+
+## Project Impact
+
+This project can be useful if it becomes stable.
+
+It could help people who run Jellyfin on small home servers but also have a stronger laptop, desktop, or mini PC available on the same network.
+
+The idea has real value, but the hardest part is automatic live playback integration. That part is still pending and needs time.
 
 ## Contributing
 
-Contributions are welcome, especially once the initial scaffold is committed.
+Contributions are welcome.
 
-Useful contribution areas include:
+Good areas to help:
 
-- Jellyfin plugin architecture
-- FFmpeg job handling
-- networking and service discovery
-- fault tolerance and retries
-- configuration UX
-- packaging and release automation
-- documentation and testing
+- Jellyfin plugin internals
+- FFmpeg command handling
+- Windows and Linux worker support
+- Transcode progress tracking
+- Dashboard UI
+- Testing on real home servers
+- Documentation
 
-If you open this repository to the public, add clear issues for early tasks so contributors know where to start.
-
-## Publishing This Repository
-
-Before pushing this to GitHub as open source, it is a good idea to add:
-
-- a `LICENSE` file
-- a `.gitignore`
-- an initial project scaffold
-- a short `CONTRIBUTING.md`
-- sample screenshots or diagrams later, if the implementation grows
-
-For a permissive open source release, `MIT` is a simple default license choice.
+Please keep issues and pull requests simple and clear.
 
 ## License
 
-No license file is included yet.
+This project is released under the MIT License.
 
-If you want others to use, fork, and contribute to the project safely, add a license before public release.
+See `LICENSE`.
 
 ## Disclaimer
 
-This project is an experimental concept and is not ready for production use. It is intended as an open source starting point for exploring distributed transcoding around Jellyfin, not as a finished plugin today.
+This is experimental software.
+
+It is not ready for production Jellyfin servers.
+
+Use it for development, testing, and learning only.

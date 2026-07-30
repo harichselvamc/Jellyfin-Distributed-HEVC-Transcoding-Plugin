@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
     <AssemblyName>Jellyfin.Plugin.DistributedTranscode</AssemblyName>
     <RootNamespace>Jellyfin.Plugin.DistributedTranscode</RootNamespace>
     <Version>0.1.0</Version>

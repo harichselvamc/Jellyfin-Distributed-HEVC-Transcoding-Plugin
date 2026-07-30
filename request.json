@@ -1,0 +1,15 @@
+{
+  "jobId": "test-job-1",
+  "chunkId": "chunk-1",
+  "sourcePath": "C:\\Users\\haric\\Downloads\\brittany-broski-broski-report.mp4",
+  "outputPath": "C:\\tmp\\chunk-1.mp4",
+  "startTimeSeconds": 0,
+  "durationSeconds": 3,
+  "videoCodec": "libx264",
+  "audioCodec": "aac",
+  "preset": "veryfast",
+  "crf": 28,
+  "resolution": "640x360",
+  "videoBitrateKbps": 1200,
+  "preferHardwareAcceleration": false
+}
